@@ -15,22 +15,23 @@
 #define SPEED 0x64 // ONLY AT DESTINATION 0x21 ESC>BLE
 
 const String VERSION = "2.3";
-bool DEBUG_MODE = false;                          // Enable debug mode - print details through serial-output
-const int SERIAL_PIN = 2;                         // Pin of serial RX line from ESC
-const int THROTTLE_PIN = 10;                      // PWM pin of throttle
-const int LED0_PIN = 13;                          // Communicate some info through a led
-const int SPEED_MIN = 5;                          // Minium speed to activate/deactivate throttle
-const int SPEED_MAX = 17;                         // Max speed before max throttle is needed (max-specs - 3km/h?)
-const int KICKS_RESET_TRESHOLD = 1;               // After X kicks next one will reset speed-building lock
-const int THROTTLE_STOP = 45;                     // Stop value for throttle (45 anti KERS).
-const int THROTTLE_MIN = 90;                      // Min value for first boost (±7km/h 110?)
-const int THROTTLE_STEP = 10;                     // Each step until SPEED_MAX
-const int THROTTLE_MAX = 233;                     // Max known value for throttle (233 most cases)
-const int THROTTLE_TUNE = 5;                      // tuning value for dynamic dec-/inc-rease of throttle based on targetSpeed
-const unsigned long DELAY_KICK_DETECTION = 350;   // delay between kick detections
-const unsigned long DELAY_KEEP_THROTTLE = 25000;  // time to keep the throttle open after kick
-const unsigned long DELAY_SPEED_DETECTION = 2000; // prevent target speed changes during kicks
-const int SPEED_HIST_SIZE = 20;                   // amount of data points in history
+bool DEBUG_MODE = false;                            // Enable debug mode - print details through serial-output
+const int SERIAL_PIN = 2;                           // Pin of serial RX line from ESC
+const int THROTTLE_PIN = 10;                        // PWM pin of throttle
+const int LED0_PIN = 13;                            // Communicate some info through a led
+const int SPEED_HIST_SIZE = 20;                     // amount of data points in history
+const int SPEED_MIN = 5;                            // Minium speed to activate/deactivate throttle
+const int SPEED_MAX = 17;                           // Max speed before max throttle is needed (max-specs - 3km/h?)
+const int KICKS_RESET_TRESHOLD = 1;                 // After X kicks next one will reset speed-building lock
+const int THROTTLE_STOP = 45;                       // Stop value for throttle (45 anti KERS).
+const int THROTTLE_MIN = 90;                        // Min value for first boost (±7km/h 110?)
+const int THROTTLE_STEP = 10;                       // Each step until SPEED_MAX
+const int THROTTLE_MAX = 233;                       // Max known value for throttle (233 most cases)
+const int THROTTLE_TUNE = 5;                        // tuning value for dynamic dec-/inc-rease of throttle based on targetSpeed
+const unsigned long DELAY_KICK_DETECTION = 350;     // delay between kick detections
+const unsigned long DELAY_KEEP_THROTTLE = 20000;    // time to keep the throttle open after kick
+const unsigned long DELAY_STOPPING_THROTTLE = 2000; // time between decrease of throttle when no kick is given
+const unsigned long DELAY_SPEED_DETECTION = 2000;   // prevent target speed changes during kicks
 
 //
 // Start of actual code, don't change stuff below this line when in doubt...
@@ -43,12 +44,13 @@ int pSizeOffset = 4; // Packet offset
 int pSpeed = 0;      // Packet speed
 
 bool pauseKickDetection = false;
-int intermediateKicks = 0;
+int intermediateKicks = 0; // buffer during speed increase to prevent fake kicks
 
 unsigned long currentTime = 0;
 unsigned long kickResetTimer = 0;
 unsigned long throttleStopTimer = 0;
 unsigned long speedTargetUnlockTimer = 0;
+unsigned long nextBrakeTimer = 0;
 
 int averageSpeed = 0;
 int targetSpeed = 0;
@@ -193,18 +195,9 @@ void loop()
             stopThrottle();
         if (speedTargetUnlockTimer != 0 && speedTargetUnlockTimer + DELAY_SPEED_DETECTION < currentTime)
             unlockSpeedTarget();
+        if (nextBrakeTimer != 0 && nextBrakeTimer + DELAY_STOPPING_THROTTLE < currentTime)
+            brakeThrottle();
     }
-}
-
-int getHighestSpeed()
-{
-    int s = 0;
-    for (int i = 0; i < SPEED_HIST_SIZE; i++)
-    {
-        if (speedHist[i] > s)
-            s = speedHist[i];
-    }
-    return s;
 }
 
 void kickDetection()
@@ -223,8 +216,10 @@ void kickDetection()
             digitalWrite(LED0_PIN, HIGH);
             intermediateKicks = 0;
             pauseKickDetection = true;
+            nextBrakeTimer = 0;
             kickResetTimer = currentTime;
-            enqueueStopThrottle();
+            speedTargetUnlockTimer = currentTime;
+            throttleStopTimer = currentTime;
         }
         else
         {
@@ -242,7 +237,7 @@ int calcThrottle()
 {
     if (targetSpeed > SPEED_MIN)
     {
-        if (targetSpeed > SPEED_MAX)
+        if (targetSpeed >= SPEED_MAX)
         {
             return THROTTLE_MAX;
         }
@@ -271,15 +266,8 @@ int calcTier()
 
 void unlockSpeedTarget()
 {
-    if (intermediateKicks > 0)
-    {
-        enqueueStopThrottle();
-    }
-    else
-    {
-        speedTargetUnlockTimer = 0;
-        digitalWrite(LED0_PIN, LOW);
-    }
+    speedTargetUnlockTimer = 0;
+    digitalWrite(LED0_PIN, LOW);
     intermediateKicks = 0;
     if (DEBUG_MODE)
         Serial.println("!! Speed Target unlocked, resetting kickcounter.");
@@ -293,16 +281,26 @@ void resetKickDetection()
         Serial.println("!! Kick Detection resumed.");
 }
 
-void enqueueStopThrottle()
-{
-    speedTargetUnlockTimer = currentTime;
-    throttleStopTimer = currentTime;
-}
-
 void stopThrottle()
 {
-    targetSpeed = 0;
+    nextBrakeTimer = currentTime;
     throttleStopTimer = 0;
     if (DEBUG_MODE)
-        Serial.println("!! Throttle stopped, time for a kick.");
+        Serial.println("!! Throttle braking, time for a kick.");
+}
+
+void brakeThrottle()
+{
+    targetSpeed--;
+    if (targetSpeed <= SPEED_MIN)
+    {
+        targetSpeed = 0;
+        nextBrakeTimer = 0;
+    }
+    else
+    {
+        nextBrakeTimer = currentTime;
+    }
+    if (DEBUG_MODE)
+        Serial.println((String) "!! Throttle braking, targetSpeed: " + targetSpeed);
 }
