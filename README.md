@@ -9,26 +9,27 @@ Installer de [Arduino IDE](https://www.arduino.cc) en selecteer oa. de Nano onde
 Open de .ino file uit deze repository en selecteer vervolgens 'Upload' onder 'Sketch' menu.
 
 # Uitleg
-Onder de 'SPEED_MIN' km/h doet de ondersteuning niks.
+Onder de **SPEED_MIN** (default: 5km/h) doet de ondersteuning niks, dus aan de hand houden is veilig.
 
+## Starten
 Bij een 'kick' (= afzetje) en het verschil tussen stilstand en rijden is >= 3km/h dan start de ondersteuning.
 
-Na 'DELAY_KEEP_THROTTLE' ms, indien er geen enkele kick is gegeven bij welke ondersteuning ook, zal de snelheid weer worden afgebouwd.
+De hoogste 'kick' snelheid zal vast worden gezet (waarschijnlijk ±7km/h bij de eerste) en voor **DELAY_SPEED_DETECTION** (default: 2sec) worden opgebouwd.
 
-Of als de snelheid onder de 'SPEED_MIN' km/h komt, stop de ondersteuning; bijv bij remmen, maar dit kan ook bij stijle heuvels.
+Na **DELAY_KEEP_THROTTLE** (default: 20sec), indien er geen enkele kick is gegeven bij welke ondersteuning ook, zal de snelheid weer langzaam worden afgebouwd in stappen van **DELAY_STOPPING_THROTTLE** (default: 2sec).
 
-### Stap 1
-De (eerste) 'kick' snelheid zal vast worden gezet (waarschijnlijk ±7km/h) en voor 'DELAY_SPEED_DETECTION' ms worden opgebouwd.
-In deze tijd kan een 2e kick worden gegeven om de snelheid te verlengen.
+Als de snelheid onder de **SPEED_MIN** (default: 5km/h) komt, stop de ondersteuning; dit kan ook bij hellingen.
 
-### Stap 2
+## Versnellen
+Wacht je **DELAY_SPEED_DETECTION** (default: 2sec) of geef je in de tussentijd **KICKS_RESET_TRESHOLD** (default: 1) extra kick's dan zal zal de snelheidsopbouw-cyclus worden herhaalt met de hogere snelheid van dat moment.
 
-Wacht je na Stap 1 > 'DELAY_SPEED_DETECTION' ms of geef je in de tussentijd 'KICKS_RESET_TRESHOLD' extra kick's dan zal zal de Stap 1 cyclus worden herhaalt met de hogere snelheid van dat moment.
+Dus simpel gezegd: steady kicks of veel korte kicks achter elkaar versnelt.
 
-Simpel. 'trage' hardere kicks versnelt & veel korte kicks achter elkaar.
+## Remmen
+Gebruik gewoon de aanwezige remmen of wacht tot de **DELAY_KEEP_THROTTLE** (default: 20sec) voorbij is.
 
-Remmen? gebruik gewoon de aanwezige remmen.
-
+## Let op!
+ Scherpe bochten, dan versnelt de step meer dan gebruikelijk en kan deze zomaar starten of versnellen.
 
 # Ministerie van Infrastructuur en Waterstaat
 > Voor e-steps met trapondersteuning gelden dezelfde regels als voor een e-bike: u moet zelf meetrappen om vooruit te komen, de trapondersteuning stopt bij 25 kilometer per uur en het maximale motorvermogen is 250 watt. De step mag dus niet zelfrijdend zijn. Zie ook https://www.rijksoverheid.nl/onderwerpen/fiets/vraag-en-antwoord/welke-regels-gelden-voor-mijn-elektrische-fiets-e-bike.  
