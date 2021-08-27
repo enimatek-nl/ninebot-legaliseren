@@ -11,8 +11,8 @@
 
 const int SERIAL_PIN = 2;
 const int THROTTLE_PIN = 10;
-const int THROTTLE_INCREASE = 10;
-const int MAX_THROTTLE = 233;
+const int THROTTLE_INCREASE = 5;
+const int MAX_THROTTLE = 220;
 const unsigned long DELAY_LOG_TIMER = 2000;
 
 SoftwareSerial SoftSerial(SERIAL_PIN, 3); // RX, TX
@@ -22,6 +22,7 @@ unsigned long logTimer = 0;
 int pSizeOffset = 4;
 int pSpeed = 0;
 int throttle = 45;
+int state = 0;
 
 void setup()
 {
@@ -67,8 +68,15 @@ void loop()
 
     analogWrite(THROTTLE_PIN, throttle);
 
+    if (pSpeed > 5 && state == 0 && logTimer == 0)
+    {
+        state = 1;
+        logTimer = millis() + DELAY_LOG_TIMER + 1;
+        throttle = 80;
+    }
+
     currentTime = millis();
-    if (throttle != 0 && logTimer + DELAY_LOG_TIMER < currentTime)
+    if (logTimer != 0 && throttle != 0 && logTimer + DELAY_LOG_TIMER < currentTime)
         logSerial();
 }
 

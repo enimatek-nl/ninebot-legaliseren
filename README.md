@@ -9,6 +9,7 @@ Installer de [Arduino IDE](https://www.arduino.cc) en selecteer oa. de Nano onde
 Open de .ino file uit deze repository en selecteer vervolgens 'Upload' onder 'Sketch' menu.
 
 # Uitleg
+Zet de step op **'S'**-mode, of Tune zelf de THROTTLE_MAP als een andere snelheid is gewenst.
 Onder de **SPEED_MIN** (default: 5km/h) doet de ondersteuning niks, dus aan de hand houden is veilig.
 
 ## Starten
@@ -16,7 +17,7 @@ Bij een 'kick' (= afzetje) en het verschil tussen stilstand en rijden is >= 3km/
 
 De hoogste 'kick' snelheid zal vast worden gezet (waarschijnlijk ±7km/h bij de eerste) en voor **DELAY_SPEED_DETECTION** (default: 2sec) worden opgebouwd.
 
-Na **DELAY_KEEP_THROTTLE** (default: 20sec), indien er geen enkele kick is gegeven bij welke ondersteuning ook, zal de snelheid weer langzaam worden afgebouwd in stappen van **DELAY_STOPPING_THROTTLE** (default: 2sec).
+Na **DELAY_KEEP_THROTTLE** (default: 8sec), indien er geen enkele kick is gegeven bij welke ondersteuning ook, zal de snelheid weer langzaam worden afgebouwd in stappen van **DELAY_STOPPING_THROTTLE** (default: 1sec).
 
 Als de snelheid onder de **SPEED_MIN** (default: 5km/h) komt, stop de ondersteuning; dit kan ook bij hellingen.
 
@@ -26,7 +27,7 @@ Wacht je **DELAY_SPEED_DETECTION** (default: 2sec) of geef je in de tussentijd *
 Dus simpel gezegd: steady kicks of veel korte kicks achter elkaar versnelt.
 
 ## Remmen
-Gebruik gewoon de aanwezige remmen of wacht tot de **DELAY_KEEP_THROTTLE** (default: 20sec) voorbij is.
+Gebruik gewoon de aanwezige remmen of wacht tot de **DELAY_KEEP_THROTTLE** (default: 8sec) voorbij is.
 
 ## Let op!
  Scherpe bochten, dan versnelt de step meer dan gebruikelijk en kan deze zomaar starten of versnellen.
