@@ -15,47 +15,25 @@ const String VERSION = "1.0";
 bool DEBUG_MODE = false; // Enable debug mode - print details through serial-output
 
 const int KICKS_RESET_TRESHOLD = 1;                 // After X kicks next one will reset speed-building lock
-const unsigned long DELAY_KICK_DETECTION = 350;     // delay between kick detections
-const unsigned long DELAY_KEEP_THROTTLE = 8000;     // time to keep the throttle open after kick
+const unsigned long DELAY_KICK_DETECTION = 350;     // delay between setting a kick detection speed target
+const unsigned long DELAY_KEEP_THROTTLE = 9000;     // time to keep the throttle open after kick
 const unsigned long DELAY_STOPPING_THROTTLE = 1000; // time between decrease of throttle when no kick is given
-const unsigned long DELAY_SPEED_DETECTION = 2000;   // prevent target speed changes during kicks
+const unsigned long DELAY_SPEED_DETECTION = 2500;   // prevent target speed changes during kicks
 
 const int THROTTLE_PIN = 10;    // PWM pin of throttle
 const int SPEED_HIST_SIZE = 20; // amount of data points in history
 const int SPEED_MIN = 5;        // Minium speed to activate/deactivate throttle
-const int SPEED_MAX = 22;       // size of the speed_map array (0 to 22 km/h)
+const int SPEED_MAX = 20;       // size of the speed_map array (0 to 22 km/h)
 const int THROTTLE_STOP = 45;   // Stop value for throttle (45 anti KERS).
-const int THROTTLE_TUNE = 10;   // Tune throttle when hitting a hill, or to boost quicker
-const int THROTTLE_MAP[] = {
-    THROTTLE_STOP, // 0
-    THROTTLE_STOP, // 1
-    THROTTLE_STOP, // 2
-    THROTTLE_STOP, // 3
-    THROTTLE_STOP, // 4
-    80,            // 5
-    90,            // 6
-    100,           // 7
-    105,           // 8
-    110,           // 9
-    120,           // 10
-    130,           // 11
-    135,           // 12
-    140,           // 13
-    150,           // 14
-    155,           // 15
-    160,           // 16
-    170,           // 17
-    180,           // 18
-    185,           // 19
-    190,           // 20
-    200,           // 21
-    210,           // 22
-};
+const int THROTTLE_TUNE = 2;    // Tune throttle when hitting a hill, or to boost quicker
+const int THROTTLE_STEP = 8;    // Each increase in throttle between min and max
+const int THROTTLE_MIN = 80;    // Min throttle (= min speed)
+const int THROTTLE_MAX = 230;   // max throttle (= max speed)
 
 //
 // Start of actual code, don't change stuff below this line when in doubt...
 //
-uint8_t pBuff[256];  // Reserved for serial packet reading
+uint8_t pBuff[256];  // Packet buffer
 int pSizeOffset = 4; // Packet offset
 int pSpeed = 0;      // Packet speed
 
@@ -174,7 +152,7 @@ void loop()
         }
     }
 
-    analogWrite(THROTTLE_PIN, getThrottle());
+    analogWrite(THROTTLE_PIN, calcThrottle());
 
     // Timers.
     currentTime = millis();
@@ -196,12 +174,11 @@ void kickDetection()
     {
         if (speedTargetUnlockTimer == 0 || intermediateKicks >= KICKS_RESET_TRESHOLD)
         {
-            targetSpeed = pSpeed >= SPEED_MAX ? SPEED_MAX : pSpeed;
-
             if (DEBUG_MODE)
                 Serial.println((String) "!! Kick Detected, current step speed: " + pSpeed + ", target speed: " + targetSpeed);
-
             digitalWrite(LED_BUILTIN, HIGH);
+            //targetSpeed = pSpeed >= SPEED_MAX ? SPEED_MAX : pSpeed;
+            targetSpeed = pSpeed;
             intermediateKicks = 0;
             pauseKickDetection = true;
             nextBrakeTimer = 0;
@@ -232,7 +209,7 @@ int calcTier()
 void unlockSpeedTarget()
 {
     if (DEBUG_MODE)
-        Serial.println((String) "!! Speed Target unlocked, needed: " + targetSpeed + ", reached: " + pSpeed + " : " + averageSpeed + " km/h  @ " + getThrottle() + " throttle.");
+        Serial.println((String) "!! Speed Target unlocked, needed: " + targetSpeed + ", reached: " + pSpeed + " : " + averageSpeed + " km/h  @ " + calcThrottle() + " throttle.");
     digitalWrite(LED_BUILTIN, LOW);
     speedTargetUnlockTimer = 0;
     intermediateKicks = 0;
@@ -240,6 +217,8 @@ void unlockSpeedTarget()
 
 void resetKickDetection()
 {
+    if (pSpeed > targetSpeed)
+        targetSpeed = pSpeed;
     kickResetTimer = 0;
     pauseKickDetection = false;
     if (DEBUG_MODE)
@@ -270,11 +249,28 @@ void brakeThrottle()
         Serial.println((String) "!! Throttle braking, targetSpeed now: " + targetSpeed);
 }
 
-int getThrottle()
+int calcThrottle()
 {
-    int d = 0;
-    if (speedTargetUnlockTimer == 0)
-        d = (targetSpeed - averageSpeed) * THROTTLE_TUNE;
-    int t = THROTTLE_MAP[targetSpeed] + d;
-    return t > THROTTLE_MAP[SPEED_MAX] ? THROTTLE_MAP[SPEED_MAX] : t;
+    if (targetSpeed > SPEED_MIN)
+    {
+        if (targetSpeed >= SPEED_MAX)
+        {
+            return THROTTLE_MAX;
+        }
+        else
+        {
+
+            int d = 0;
+            if (speedTargetUnlockTimer == 0)
+                d = (targetSpeed - averageSpeed) * (THROTTLE_TUNE * 2);
+            int z = (targetSpeed - ((SPEED_MIN + SPEED_MAX) / 2)) * THROTTLE_TUNE;
+            d = d + z > 0 ? z : 0;
+            int t = (THROTTLE_MIN + d) + (THROTTLE_STEP * (targetSpeed - SPEED_MIN));
+            return t > THROTTLE_MAX ? THROTTLE_MAX : t;
+        }
+    }
+    else
+    {
+        return THROTTLE_STOP;
+    }
 }
