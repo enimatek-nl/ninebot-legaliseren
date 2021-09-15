@@ -11,14 +11,14 @@
 #define NINEBOT_H2 0xA5
 #define SPEED 0x64
 
-const String VERSION = "1.0";
+const String VERSION = "1.5";
 bool DEBUG_MODE = false; // Enable debug mode - print details through serial-output
 
-const int KICKS_RESET_TRESHOLD = 1;                 // After X kicks next one will reset speed-building lock
-const unsigned long DELAY_KICK_DETECTION = 350;     // delay between setting a kick detection speed target
-const unsigned long DELAY_KEEP_THROTTLE = 9000;     // time to keep the throttle open after kick
-const unsigned long DELAY_STOPPING_THROTTLE = 1000; // time between decrease of throttle when no kick is given
-const unsigned long DELAY_SPEED_DETECTION = 2500;   // prevent target speed changes during kicks
+const int KICKS_RESET_TRESHOLD = 1;               // After X kicks next one will reset speed-building lock
+const unsigned long DELAY_KICK_DETECTION = 350;   // delay between setting a kick detection speed target
+const unsigned long DELAY_KEEP_THROTTLE = 9000;   // time to keep the throttle open after kick
+const unsigned long DELAY_SPEED_DETECTION = 2500; // prevent target speed changes during kicks
+const unsigned long DELAY_SPEED_TUNE = 1250;      // prevent throttle tune during this interval
 
 const int THROTTLE_PIN = 10;    // PWM pin of throttle
 const int SPEED_HIST_SIZE = 20; // amount of data points in history
@@ -27,7 +27,7 @@ const int SPEED_MAX = 20;       // size of the speed_map array (0 to 22 km/h)
 const int THROTTLE_STOP = 45;   // Stop value for throttle (45 anti KERS).
 const int THROTTLE_TUNE = 2;    // Tune throttle when hitting a hill, or to boost quicker
 const int THROTTLE_STEP = 8;    // Each increase in throttle between min and max
-const int THROTTLE_MIN = 80;    // Min throttle (= min speed)
+const int THROTTLE_MIN = 80;    // min throttle (= min speed)
 const int THROTTLE_MAX = 230;   // max throttle (= max speed)
 
 //
@@ -44,10 +44,12 @@ unsigned long currentTime = 0;
 unsigned long kickResetTimer = 0;
 unsigned long throttleStopTimer = 0;
 unsigned long speedTargetUnlockTimer = 0;
-unsigned long nextBrakeTimer = 0;
+unsigned long speedTuneUnlockTimer = 0;
 
 int averageSpeed = 0;
 int targetSpeed = 0;
+
+int throttleTune = 0;
 
 int speedHistTotal = 0;         // Sum of the history.
 int speedHist[SPEED_HIST_SIZE]; // History of speeds.
@@ -162,8 +164,8 @@ void loop()
         stopThrottle();
     if (speedTargetUnlockTimer != 0 && speedTargetUnlockTimer + DELAY_SPEED_DETECTION < currentTime)
         unlockSpeedTarget();
-    if (nextBrakeTimer != 0 && nextBrakeTimer + DELAY_STOPPING_THROTTLE < currentTime)
-        brakeThrottle();
+    if (speedTuneUnlockTimer != 0 && speedTuneUnlockTimer + DELAY_SPEED_TUNE < currentTime)
+        unlockThrottleTuner();
 }
 
 void kickDetection()
@@ -177,14 +179,11 @@ void kickDetection()
             if (DEBUG_MODE)
                 Serial.println((String) "!! Kick Detected, current step speed: " + pSpeed + ", target speed: " + targetSpeed);
             digitalWrite(LED_BUILTIN, HIGH);
-            //targetSpeed = pSpeed >= SPEED_MAX ? SPEED_MAX : pSpeed;
-            targetSpeed = pSpeed;
             intermediateKicks = 0;
             pauseKickDetection = true;
-            nextBrakeTimer = 0;
             kickResetTimer = currentTime;
-            speedTargetUnlockTimer = currentTime;
             throttleStopTimer = currentTime;
+            setTarget();
         }
         else
         {
@@ -206,6 +205,13 @@ int calcTier()
     return 3;
 }
 
+void unlockThrottleTuner()
+{
+    if (DEBUG_MODE)
+        Serial.println((String) "!! Throttle Tuner unlocked.");
+    speedTuneUnlockTimer = 0;
+}
+
 void unlockSpeedTarget()
 {
     if (DEBUG_MODE)
@@ -218,7 +224,7 @@ void unlockSpeedTarget()
 void resetKickDetection()
 {
     if (pSpeed > targetSpeed)
-        targetSpeed = pSpeed;
+        setTarget();
     kickResetTimer = 0;
     pauseKickDetection = false;
     if (DEBUG_MODE)
@@ -228,25 +234,27 @@ void resetKickDetection()
 void stopThrottle()
 {
     throttleStopTimer = 0;
-    nextBrakeTimer = currentTime;
+    targetSpeed = 0;
     if (DEBUG_MODE)
-        Serial.println("!! Throttle starting to brake, time for a kick?");
+        Serial.println("!! Throttle stopped.");
 }
 
-void brakeThrottle()
+void setTarget()
 {
-    targetSpeed--;
-    if (targetSpeed < SPEED_MIN)
-    {
-        targetSpeed = 0;
-        nextBrakeTimer = 0;
-    }
-    else
-    {
-        nextBrakeTimer = currentTime;
-    }
+    speedTargetUnlockTimer = currentTime;
+    int prev = calcThrottle();
+    int old = throttleTune;
     if (DEBUG_MODE)
-        Serial.println((String) "!! Throttle braking, targetSpeed now: " + targetSpeed);
+        Serial.println((String) "!! Set Speed Target, prev: " + targetSpeed + ", new: " + pSpeed + ", " + prev + " throttle plus " + old + " tuned.");
+    targetSpeed = pSpeed;
+    throttleTune = 0;
+    if (pSpeed >= targetSpeed)
+    {
+        if (calcThrottle() < prev)
+        {
+            throttleTune = old;
+        }
+    }
 }
 
 int calcThrottle()
@@ -259,13 +267,17 @@ int calcThrottle()
         }
         else
         {
-
-            int d = 0;
-            if (speedTargetUnlockTimer == 0)
-                d = (targetSpeed - averageSpeed) * (THROTTLE_TUNE * 2);
+            if (speedTuneUnlockTimer == 0 && speedTargetUnlockTimer == 0)
+            {
+                int d = targetSpeed - averageSpeed;
+                if (d != 0)
+                {
+                    throttleTune += d * THROTTLE_TUNE;
+                    speedTuneUnlockTimer = currentTime;
+                }
+            }
             int z = (targetSpeed - ((SPEED_MIN + SPEED_MAX) / 2)) * THROTTLE_TUNE;
-            d = d + z > 0 ? z : 0;
-            int t = (THROTTLE_MIN + d) + (THROTTLE_STEP * (targetSpeed - SPEED_MIN));
+            int t = (THROTTLE_MIN + throttleTune + z) + (THROTTLE_STEP * (targetSpeed - SPEED_MIN));
             return t > THROTTLE_MAX ? THROTTLE_MAX : t;
         }
     }
